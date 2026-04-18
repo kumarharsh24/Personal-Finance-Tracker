@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Import - Finance Tracker</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div class="page-header"><h1>Import & Convert</h1></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><h3>📄 CSV Import</h3></div>
+          <p style="color:var(--text-secondary);margin-bottom:16px;font-size:.88rem;line-height:1.6">Upload a CSV bank statement with columns like <code style="background:var(--bg-input);padding:2px 6px;border-radius:4px;font-size:.8rem">Date, Amount, Description</code>. Transactions are auto-categorized and duplicates are detected.</p>
+          <form id="csv-form"><div class="form-group"><input type="file" class="form-control" id="csv-file" accept=".csv" required></div><button type="submit" class="btn btn-primary">Import CSV →</button></form>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>📑 PDF Import</h3></div>
+          <p style="color:var(--text-secondary);margin-bottom:16px;font-size:.88rem;line-height:1.6">Upload a bank statement PDF. We'll extract transaction data automatically using text parsing. Works best with structured statements.</p>
+          <form id="pdf-form"><div class="form-group"><input type="file" class="form-control" id="pdf-file" accept=".pdf" required></div><button type="submit" class="btn btn-primary">Import PDF →</button></form>
+        </div>
+      </div>
+      <div id="import-result" style="margin-top:16px"></div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>💱 Currency Converter</h3></div>
+        <div class="filters" style="margin-top:8px">
+          <div class="form-group"><label>Amount</label><input type="number" class="form-control" id="conv-amount" value="100"></div>
+          <div class="form-group"><label>From</label><select class="form-control" id="conv-from"><option>USD</option><option>EUR</option><option>GBP</option><option>INR</option><option>JPY</option><option>CAD</option><option>AUD</option></select></div>
+          <div class="form-group"><label>To</label><select class="form-control" id="conv-to"><option>INR</option><option>USD</option><option>EUR</option><option>GBP</option><option>JPY</option></select></div>
+          <div class="form-group"><label>&nbsp;</label><button class="btn btn-primary" onclick="convert()">Convert</button></div>
+        </div>
+        <div id="conv-result" style="font-size:1.4rem;font-weight:800;margin-top:16px;letter-spacing:-.3px"></div>
+      </div>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/sidebar.js"></script>
+  <script>
+    async function init(){await initPage('import')}
+    async function doImport(formId,fileId,endpoint){
+      const f=document.getElementById(fileId).files[0];if(!f)return;const fd=new FormData();fd.append('statement',f);
+      document.getElementById('import-result').innerHTML='<div class="card"><div class="loading-overlay"><div class="spinner"></div><span>Processing file...</span></div></div>';
+      try{const d=await api(endpoint,{method:'POST',body:fd});showResult(d)}catch(err){document.getElementById('import-result').innerHTML=`<div class="alert alert-error">${err.message}</div>`}
+    }
+    document.getElementById('csv-form').onsubmit=e=>{e.preventDefault();doImport('csv-form','csv-file','/import/csv')};
+    document.getElementById('pdf-form').onsubmit=e=>{e.preventDefault();doImport('pdf-form','pdf-file','/import/pdf')};
+    function showResult(d){document.getElementById('import-result').innerHTML=`<div class="card"><div class="card-header"><h3>Import Results</h3></div><div class="stats-grid" style="margin-top:4px"><div class="stat-card total"><div class="label">Total Rows</div><div class="value">${d.total}</div></div><div class="stat-card income"><div class="label">Imported</div><div class="value" style="color:var(--success)">${d.imported}</div></div><div class="stat-card savings"><div class="label">Duplicates</div><div class="value" style="color:var(--warning)">${d.duplicates}</div></div><div class="stat-card expense"><div class="label">Errors</div><div class="value" style="color:var(--danger)">${d.errors?d.errors.length:0}</div></div></div>${d.errors&&d.errors.length?'<div class="alert alert-error" style="margin-top:12px;white-space:pre-wrap;font-size:.8rem">'+d.errors.join('\n')+'</div>':''}</div>`}
+    async function convert(){try{const a=document.getElementById('conv-amount').value;const f=document.getElementById('conv-from').value;const t=document.getElementById('conv-to').value;const d=await api(`/currencies/convert?from=${f}&to=${t}&amount=${a}`);document.getElementById('conv-result').innerHTML=`${formatCurrency(parseFloat(a),f)} = <span style="color:var(--success)">${formatCurrency(d.converted,t)}</span>`}catch(err){showToast(err.message,'error')}}
+    init();
+  </script>
+</body>
+</html>

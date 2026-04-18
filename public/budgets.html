@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Budgets - Finance Tracker</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div class="page-header"><h1>Budget Goals</h1><div class="header-actions"><button class="btn btn-primary" onclick="openModal()">+ Set Budget</button></div></div>
+      <div id="budgets-list"><div class="loading-overlay"><div class="spinner"></div><span>Loading budgets...</span></div></div>
+    </main>
+  </div>
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <h2 id="modal-title">Set Budget</h2>
+      <form id="budget-form">
+        <input type="hidden" id="b-id">
+        <div class="form-group"><label>Expense Category</label><select class="form-control" id="b-cat" required></select></div>
+        <div class="form-row">
+          <div class="form-group"><label>Budget Amount</label><input type="number" step="0.01" class="form-control" id="b-amount" placeholder="500.00" required></div>
+          <div class="form-group"><label>Period</label><select class="form-control" id="b-period"><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div>
+        </div>
+        <div class="modal-actions"><button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button><button type="submit" class="btn btn-primary">Save Budget</button></div>
+      </form>
+    </div>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/sidebar.js"></script>
+  <script>
+    let categories=[];
+    async function init(){const u=await initPage('budgets');if(!u)return;const d=await api('/categories?type=expense');categories=d.categories;loadBudgets()}
+    async function loadBudgets(){
+      try{const d=await api('/budgets');const div=document.getElementById('budgets-list');
+        if(!d.budgets.length){div.innerHTML='<div class="empty-state" style="padding:80px 20px"><div class="icon">🎯</div><p>No budgets set yet. Set your first budget to start tracking!</p><button class="btn btn-primary" style="margin-top:16px" onclick="openModal()">+ Set Budget</button></div>';return}
+        div.innerHTML=`<div class="budget-grid">${d.budgets.map(b=>{const pct=Math.min(b.percentage,100);const cls=b.percentage>100?'danger':b.percentage>80?'warning':'ok';
+          return `<div class="budget-card">
+            <div class="budget-header"><div><div class="budget-name">${b.category_name}</div><div class="budget-period">${b.period}</div></div><div style="display:flex;gap:4px"><button class="btn btn-outline btn-sm btn-icon" onclick="editBudget(${b.id})">✏️</button><button class="btn btn-danger btn-sm btn-icon" onclick="deleteBudget(${b.id})">🗑</button></div></div>
+            <div class="budget-amount" style="color:${b.is_over?'var(--danger)':'var(--text)'}">${formatCurrency(b.spent)}<span style="font-size:.8rem;font-weight:400;color:var(--text-muted)"> / ${formatCurrency(parseFloat(b.amount))}</span></div>
+            <div class="progress"><div class="progress-bar ${cls}" style="width:${pct}%"></div></div>
+            <div class="budget-sub">${b.percentage}% used · <span style="color:${b.remaining>=0?'var(--success)':'var(--danger)'}">${formatCurrency(Math.abs(b.remaining))} ${b.remaining>=0?'left':'over'}</span></div>
+            ${b.is_over?'<div class="alert alert-error" style="margin-top:10px;padding:8px 12px;font-size:.78rem">⚠️ Budget exceeded!</div>':''}
+          </div>`}).join('')}</div>`
+      }catch(err){showToast(err.message,'error')}
+    }
+    function openModal(b=null){document.getElementById('b-id').value=b?b.id:'';document.getElementById('modal-title').textContent=b?'Edit Budget':'Set Budget';document.getElementById('b-cat').innerHTML=categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');if(b){document.getElementById('b-cat').value=b.category_id;document.getElementById('b-amount').value=b.amount;document.getElementById('b-period').value=b.period}else{document.getElementById('b-amount').value='';document.getElementById('b-period').value='monthly'}document.getElementById('modal').classList.add('active')}
+    function closeModal(){document.getElementById('modal').classList.remove('active')}
+    document.getElementById('budget-form').onsubmit=async e=>{e.preventDefault();const id=document.getElementById('b-id').value;const b={category_id:parseInt(document.getElementById('b-cat').value),amount:parseFloat(document.getElementById('b-amount').value),period:document.getElementById('b-period').value};try{if(id)await api(`/budgets/${id}`,{method:'PUT',body:b});else await api('/budgets',{method:'POST',body:b});showToast(id?'Updated':'Created');closeModal();loadBudgets()}catch(err){showToast(err.message,'error')}};
+    async function editBudget(id){try{const d=await api(`/budgets/${id}`);openModal(d.budget)}catch(err){showToast(err.message,'error')}}
+    async function deleteBudget(id){if(!confirm('Delete this budget?'))return;try{await api(`/budgets/${id}`,{method:'DELETE'});showToast('Deleted');loadBudgets()}catch(err){showToast(err.message,'error')}}
+    init();
+  </script>
+</body>
+</html>

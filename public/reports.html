@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Reports - Finance Tracker</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div class="page-header"><h1>Reports & Analytics</h1><div class="header-actions"><button class="btn btn-outline btn-sm" onclick="exportCSV()">📥 Export CSV</button></div></div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="filters">
+          <div class="form-group"><label>Year</label><select class="form-control" id="r-year" onchange="loadReport()"></select></div>
+          <div class="form-group"><label>Month</label><select class="form-control" id="r-month" onchange="loadReport()"><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select></div>
+        </div>
+      </div>
+      <div class="stats-grid" id="report-stats"></div>
+      <div class="grid-2">
+        <div class="card"><div class="card-header"><h3>Income Sources</h3></div><canvas id="incomeChart" height="220"></canvas></div>
+        <div class="card"><div class="card-header"><h3>Expense Categories</h3></div><canvas id="expenseChart" height="220"></canvas></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="card-header"><h3>📈 6-Month Trend</h3></div><canvas id="trendChart" height="200"></canvas></div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>🤖 AI Financial Advisor</h3></div>
+        <div style="display:flex;gap:10px;margin-bottom:16px"><button class="btn btn-primary" onclick="runAI()">Analyze My Spending</button></div>
+        <div id="ai-result"></div>
+        <div class="divider"></div>
+        <div class="form-group"><label>Ask a financial question</label><div style="display:flex;gap:8px"><input type="text" class="form-control" id="ai-question" placeholder="e.g. How can I reduce my food expenses?"><button class="btn btn-primary btn-sm" onclick="askAI()">Ask AI</button></div></div>
+        <div id="ai-answer"></div>
+      </div>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/sidebar.js"></script>
+  <script>
+    let incC,expC,trendC;
+    async function init(){const u=await initPage('reports');if(!u)return;const y=document.getElementById('r-year');const cy=new Date().getFullYear();for(let i=cy;i>=cy-5;i--)y.innerHTML+=`<option value="${i}">${i}</option>`;document.getElementById('r-month').value=new Date().getMonth()+1;loadReport();loadTrends()}
+    const chartColors=['#7c6cf0','#34d399','#f87171','#fbbf24','#f472b6','#38bdf8','#a78bfa','#fb923c','#4ade80','#818cf8','#2dd4bf','#e879f9'];
+    const chartOpts={responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:10,font:{family:'Inter',size:11}}}}};
+    async function loadReport(){
+      try{const d=await api(`/reports/monthly?year=${document.getElementById('r-year').value}&month=${document.getElementById('r-month').value}`);const s=d.summary;
+        document.getElementById('report-stats').innerHTML=`<div class="stat-card income"><div class="label">Income</div><div class="value" style="color:var(--income-color)">${formatCurrency(s.totalIncome)}</div></div><div class="stat-card expense"><div class="label">Expenses</div><div class="value" style="color:var(--expense-color)">${formatCurrency(s.totalExpenses)}</div></div><div class="stat-card savings"><div class="label">Net Savings</div><div class="value" style="color:${s.netSavings>=0?'var(--success)':'var(--danger)'}">${formatCurrency(s.netSavings)}</div></div><div class="stat-card total"><div class="label">Savings Rate</div><div class="value">${s.savingsRate}%</div></div>`;
+        if(incC)incC.destroy();if(d.incomeByCategory.length)incC=new Chart(document.getElementById('incomeChart'),{type:'doughnut',data:{labels:d.incomeByCategory.map(i=>i.category||'Other'),datasets:[{data:d.incomeByCategory.map(i=>parseFloat(i.total)),backgroundColor:chartColors,borderWidth:0}]},options:chartOpts});
+        if(expC)expC.destroy();if(d.expensesByCategory.length)expC=new Chart(document.getElementById('expenseChart'),{type:'doughnut',data:{labels:d.expensesByCategory.map(i=>i.category||'Other'),datasets:[{data:d.expensesByCategory.map(i=>parseFloat(i.total)),backgroundColor:chartColors,borderWidth:0}]},options:chartOpts});
+      }catch(err){showToast(err.message,'error')}
+    }
+    async function loadTrends(){
+      try{const d=await api('/reports/trends?months=6');if(trendC)trendC.destroy();
+        trendC=new Chart(document.getElementById('trendChart'),{type:'line',data:{labels:d.trends.map(t=>`${t.month}`),datasets:[{label:'Income',data:d.trends.map(t=>t.income),borderColor:'#34d399',backgroundColor:'rgba(52,211,153,.08)',fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#34d399'},{label:'Expenses',data:d.trends.map(t=>t.expenses),borderColor:'#f87171',backgroundColor:'rgba(248,113,113,.08)',fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#f87171'},{label:'Savings',data:d.trends.map(t=>t.savings),borderColor:'#7c6cf0',backgroundColor:'rgba(124,108,240,.08)',fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#7c6cf0'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{usePointStyle:true,pointStyle:'circle',padding:16,font:{family:'Inter',size:12}}}},scales:{y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.03)'}},x:{grid:{display:false}}}}})
+      }catch(err){showToast(err.message,'error')}
+    }
+    async function exportCSV(){try{const r=await fetch(`/api/reports/export?start=${document.getElementById('r-year').value}-01-01&end=${document.getElementById('r-year').value}-12-31`,{credentials:'include'});const b=await r.blob();const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='transactions.csv';a.click()}catch(err){showToast(err.message,'error')}}
+    async function runAI(){const d=document.getElementById('ai-result');d.innerHTML='<div class="loading-overlay" style="padding:20px"><div class="spinner"></div><span>AI is analyzing your data...</span></div>';try{const r=await api('/ai/analyze',{method:'POST'});d.innerHTML=`<div style="white-space:pre-wrap;line-height:1.8;font-size:.9rem">${r.analysis}</div>`}catch(err){d.innerHTML=`<div class="alert alert-error">${err.message}</div>`}}
+    async function askAI(){const q=document.getElementById('ai-question').value;if(!q)return;const d=document.getElementById('ai-answer');d.innerHTML='<div class="loading-overlay" style="padding:16px"><div class="spinner"></div></div>';try{const r=await api('/ai/advice',{method:'POST',body:{question:q}});d.innerHTML=`<div style="white-space:pre-wrap;line-height:1.8;font-size:.9rem;margin-top:12px">${r.answer}</div>`}catch(err){d.innerHTML=`<div class="alert alert-error">${err.message}</div>`}}
+    init();
+  </script>
+</body>
+</html>

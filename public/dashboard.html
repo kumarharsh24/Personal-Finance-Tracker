@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Dashboard - Finance Tracker</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- sidebar injected by JS -->
+    <main class="main">
+      <div class="page-header">
+        <h1>Dashboard</h1>
+        <div class="header-actions">
+          <button class="btn btn-outline btn-sm" onclick="toggleNotifs()">🔔 <span id="notif-count" class="notif-badge" style="display:none">0</span></button>
+          <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+        </div>
+      </div>
+      <div id="notif-dropdown" class="notif-dropdown"></div>
+
+      <div class="stats-grid" id="stats">
+        <div class="stat-card income"><div class="label">Loading...</div><div class="value">—</div></div>
+        <div class="stat-card expense"><div class="label">Loading...</div><div class="value">—</div></div>
+        <div class="stat-card savings"><div class="label">Loading...</div><div class="value">—</div></div>
+        <div class="stat-card total"><div class="label">Loading...</div><div class="value">—</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><h3>Income vs Expenses</h3></div>
+          <canvas id="barChart" height="220"></canvas>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Expense Breakdown</h3></div>
+          <canvas id="pieChart" height="220"></canvas>
+          <div id="pie-empty"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Recent Transactions</h3><a href="/transactions.html" class="btn btn-outline btn-sm">View All →</a></div>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Type</th><th>Amount</th></tr></thead><tbody id="recent-tbody"><tr><td colspan="5"><div class="loading-overlay"><div class="spinner"></div></div></td></tr></tbody></table></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>⚠️ Spending Anomalies</h3></div>
+        <div id="anomalies"><div class="loading-overlay"><div class="spinner"></div><span>Analyzing patterns...</span></div></div>
+      </div>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/sidebar.js"></script>
+  <script>
+    async function init() {
+      const user = await initPage('dashboard');
+      if (!user) return;
+      loadDashboard();
+    }
+    async function loadDashboard() {
+      try {
+        const [summary, chartData, recent, breakdown, anomalyData] = await Promise.all([
+          api('/dashboard/summary'), api('/dashboard/chart-data'), api('/dashboard/recent'),
+          api('/dashboard/category-breakdown'), api('/dashboard/anomalies')
+        ]);
+        const s = summary;
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-card income"><div class="label">Monthly Income</div><div class="value" style="color:var(--income-color)">${formatCurrency(s.currentMonth.income)}</div><div class="change ${s.incomeChange>=0?'positive':'negative'}">${s.incomeChange>=0?'▲':'▼'} ${Math.abs(s.incomeChange)}% vs last month</div></div>
+          <div class="stat-card expense"><div class="label">Monthly Expenses</div><div class="value" style="color:var(--expense-color)">${formatCurrency(s.currentMonth.expenses)}</div><div class="change ${s.expenseChange<=0?'positive':'negative'}">${s.expenseChange>=0?'▲':'▼'} ${Math.abs(s.expenseChange)}% vs last month</div></div>
+          <div class="stat-card savings"><div class="label">Monthly Savings</div><div class="value" style="color:${s.currentMonth.savings>=0?'var(--success)':'var(--danger)'}">${formatCurrency(s.currentMonth.savings)}</div></div>
+          <div class="stat-card total"><div class="label">All-Time Balance</div><div class="value">${formatCurrency(s.allTime.savings)}</div></div>`;
+
+        // Bar chart
+        Chart.defaults.color = '#6b7280';
+        Chart.defaults.borderColor = 'rgba(255,255,255,.04)';
+        new Chart(document.getElementById('barChart'), {type:'bar',data:{labels:chartData.data.map(d=>d.label),datasets:[{label:'Income',data:chartData.data.map(d=>d.income),backgroundColor:'rgba(52,211,153,.65)',borderRadius:6,borderSkipped:false},{label:'Expenses',data:chartData.data.map(d=>d.expense),backgroundColor:'rgba(248,113,113,.65)',borderRadius:6,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{usePointStyle:true,pointStyle:'circle',padding:16,font:{family:'Inter',size:12}}}},scales:{y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.03)'},ticks:{font:{family:'Inter'}}},x:{grid:{display:false},ticks:{font:{family:'Inter'}}}}}});
+
+        // Pie chart
+        const bd = breakdown.data.filter(d=>parseFloat(d.total)>0);
+        if(bd.length) {
+          const colors = ['#7c6cf0','#34d399','#f87171','#fbbf24','#f472b6','#38bdf8','#a78bfa','#fb923c','#4ade80','#818cf8','#2dd4bf','#e879f9'];
+          new Chart(document.getElementById('pieChart'), {type:'doughnut',data:{labels:bd.map(d=>d.category_name||'Other'),datasets:[{data:bd.map(d=>parseFloat(d.total)),backgroundColor:colors.slice(0,bd.length),borderWidth:0,hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:10,font:{family:'Inter',size:11}}}}}});
+        } else { document.getElementById('pie-empty').innerHTML='<div class="empty-state"><div class="icon">📊</div><p>Add expenses to see breakdown</p></div>'; }
+
+        // Recent
+        const tbody = document.getElementById('recent-tbody');
+        if(recent.transactions.length===0) { tbody.innerHTML='<tr><td colspan="5"><div class="empty-state"><div class="icon">💳</div><p>No transactions yet. <a href="/transactions.html">Add one →</a></p></div></td></tr>'; }
+        else { tbody.innerHTML = recent.transactions.map(t=>`<tr><td>${formatDate(t.date)}</td><td>${t.description||'—'}</td><td>${t.category_name||'—'}</td><td><span class="badge badge-${t.type}">${t.type}</span></td><td style="color:var(--${t.type}-color);font-weight:600">${t.type==='expense'?'- ':'+ '}${formatCurrency(parseFloat(t.amount),t.currency)}</td></tr>`).join(''); }
+
+        // Anomalies
+        const aDiv = document.getElementById('anomalies');
+        if(anomalyData.anomalies && anomalyData.anomalies.length>0) {
+          aDiv.innerHTML = anomalyData.anomalies.slice(0,5).map(a=>`<div class="alert alert-${a.severity==='high'?'error':'warning'}"><span><strong>${a.transaction.description||'Transaction'}</strong> — ${formatCurrency(parseFloat(a.transaction.amount))} on ${formatDate(a.transaction.date)}<br><small style="opacity:.8">${a.reason}</small></span></div>`).join('');
+        } else { aDiv.innerHTML = '<div class="alert alert-success">✅ No spending anomalies detected. Your patterns look healthy!</div>'; }
+      } catch(err) { showToast(err.message,'error'); }
+    }
+    async function toggleNotifs() {
+      const dd = document.getElementById('notif-dropdown');
+      if(dd.classList.contains('active')) { dd.classList.remove('active'); return; }
+      try {
+        const data = await api('/notifications');
+        dd.innerHTML = data.notifications.length ? data.notifications.slice(0,10).map(n=>`<div class="notif-item ${n.is_read?'':'unread'}" onclick="markRead(${n.id})">${n.message}<br><small style="color:var(--text-muted)">${formatDate(n.created_at)}</small></div>`).join('') : '<div class="notif-item" style="color:var(--text-muted)">No notifications yet</div>';
+        dd.classList.add('active');
+      } catch(e) { showToast(e.message,'error'); }
+    }
+    async function markRead(id) { try { await api(`/notifications/${id}/read`,{method:'PUT'}); loadNotificationCount(); toggleNotifs(); } catch{} }
+    document.addEventListener('click', e => { if(!e.target.closest('#notif-dropdown')&&!e.target.closest('[onclick*=toggleNotifs]')) document.getElementById('notif-dropdown').classList.remove('active'); });
+    init();
+  </script>
+</body>
+</html>
