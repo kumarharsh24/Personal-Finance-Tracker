@@ -8,7 +8,7 @@ function ensureAuthenticated(req, res, next) {
   }
 
   // API requests get JSON response
-  if (req.path.startsWith('/api/')) {
+  if (req.originalUrl.startsWith('/api/')) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
